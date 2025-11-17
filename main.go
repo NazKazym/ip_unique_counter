@@ -1,21 +1,41 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"net"
+	"os"
 )
 
-//TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
-
 func main() {
-	//TIP <p>Press <shortcut actionId="ShowIntentionActions"/> when your caret is at the underlined text
-	// to see how GoLand suggests fixing the warning.</p><p>Alternatively, if available, click the lightbulb to view possible fixes.</p>
-	s := "gopher"
-	fmt.Println("Hello and welcome, %s!", s)
-
-	for i := 1; i <= 5; i++ {
-		//TIP <p>To start your debugging session, right-click your code in the editor and select the Debug option.</p> <p>We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-		// for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.</p>
-		fmt.Println("i =", 100/i)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: unique_ip_count <path-to-ip-file>")
+		os.Exit(1)
 	}
+
+	path := os.Args[1]
+	f, err := os.Open(path)
+	if err != nil {
+		fmt.Println("Failed to open file:", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	seen := make(map[string]struct{})
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		ip := net.ParseIP(line)
+		if ip == nil {
+			continue // skip invalid lines
+		}
+		seen[line] = struct{}{}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Read error:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Unique IPs:", len(seen))
 }
