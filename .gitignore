@@ -1,0 +1,16 @@
+# Binaries
+/bin/
+/build/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go module cache
+/pkg/
+/**/go.sum
+
+# JetBrains
+.idea/
+*.iml
