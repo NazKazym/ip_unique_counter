@@ -2,40 +2,53 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"net"
 	"os"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: unique_ip_count <path-to-ip-file>")
+	configPath := defaultConfigFileName
+	if len(os.Args) >= 2 {
+		configPath = os.Args[1]
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		fmt.Println("Failed to load config:", err)
 		os.Exit(1)
 	}
 
-	path := os.Args[1]
+	unique, err := countUniqueIPsInMemory(context.Background(), cfg.SourceURI)
+	if err != nil {
+		fmt.Println("Error:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Unique IPs:", unique)
+}
+
+func countUniqueIPsInMemory(_ context.Context, path string) (int, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		fmt.Println("Failed to open file:", err)
-		os.Exit(1)
+		return 0, err
 	}
 	defer f.Close()
 
 	seen := make(map[string]struct{})
-
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 		ip := net.ParseIP(line)
 		if ip == nil {
-			continue // skip invalid lines
+			continue
 		}
 		seen[line] = struct{}{}
 	}
 	if err := scanner.Err(); err != nil {
-		fmt.Println("Read error:", err)
-		os.Exit(1)
+		return 0, err
 	}
 
-	fmt.Println("Unique IPs:", len(seen))
+	return len(seen), nil
 }
