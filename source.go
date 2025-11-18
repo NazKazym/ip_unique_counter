@@ -8,7 +8,7 @@ import (
 )
 
 // InputSource is an abstraction for where the data comes from.
-// Right now we only implement local files, but FTP/S3/etc can be added later.
+// Right now we only implement local files, but more can be added later.
 type InputSource interface {
 	Open(ctx context.Context) (io.ReadCloser, error)
 }
