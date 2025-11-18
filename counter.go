@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"net"
 	"os"
 )
 
@@ -14,10 +13,9 @@ type UniqueIPCounter struct {
 func NewUniqueIPCounter(cfg Config) *UniqueIPCounter {
 	return &UniqueIPCounter{cfg: cfg}
 }
-
-// CountUnique is still a simple in-memory unique counter (no buckets yet).
 func (c *UniqueIPCounter) CountUnique(ctx context.Context) (int, error) {
-	_ = ctx // not used yet
+	// 1) Примерно оцениваем количество строк/айпишников по размеру файла.
+	approxItems := approximateItemsFromFile(c.cfg.SourceURI)
 
 	f, err := os.Open(c.cfg.SourceURI)
 	if err != nil {
@@ -25,19 +23,33 @@ func (c *UniqueIPCounter) CountUnique(ctx context.Context) (int, error) {
 	}
 	defer f.Close()
 
-	seen := make(map[string]struct{})
+	// 2) Выбираем реализацию (map/bitmap) уже с учётом approxItems.
+	ipSet := newIPSetFromConfig(c.cfg.Counter, approxItems)
+
 	scanner := bufio.NewScanner(f)
+	unique := 0
+
 	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return unique, ctx.Err()
+		default:
+		}
+
 		line := scanner.Text()
-		ip := net.ParseIP(line)
-		if ip == nil {
+
+		ip, ok := ParseIPv4(line)
+		if !ok {
 			continue
 		}
-		seen[line] = struct{}{}
+
+		if ipSet.AddUint32(ip) {
+			unique++
+		}
 	}
+
 	if err := scanner.Err(); err != nil {
 		return 0, err
 	}
-
-	return len(seen), nil
+	return unique, nil
 }
