@@ -1,12 +1,5 @@
-source_type: "file"               # only "file" implemented now
-source_uri: "./data/ip_addresses.txt"  # path to big IP file
-
-bucket_dir: "./buckets"
-num_workers: 10                    # if it's 0 => use NumCPU
-num_buckets: 128
-batch_lines: 10000
-remove_after: true
-
-log_level: "info"                 # "error", "warn", "info", "debug"
-max_retries: 3
-retry_delay_ms: 500
+source_uri: "/home/naz/ip_addresses"  # path to IP file
+bitmapThresholdMB: 100
+counter:
+  buffer_size: 1   # MB
+  batch_size: 10000  # lines

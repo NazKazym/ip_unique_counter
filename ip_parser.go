@@ -1,10 +1,10 @@
 package main
 
-// ParseIPv4 parses IPv4 "A.B.C.D" → uint32
-func ParseIPv4(s string) (uint32, bool) {
+// Parses IP directly from string to uint32
+func parseIPv4Fast(s string) (uint32, bool) {
 	var a, b, c, d int
 	var n int
-	var parts int
+	parts := 0
 
 	for i := 0; i < len(s); i++ {
 		ch := s[i]
@@ -26,13 +26,22 @@ func ParseIPv4(s string) (uint32, bool) {
 			}
 			parts++
 			n = 0
+		} else if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+			// Allow whitespace after IP
+			break
 		} else {
+			// Invalid character
 			return 0, false
 		}
 	}
 
-	d = n
 	if parts != 3 {
+		return 0, false
+	}
+	d = n
+
+	// Single check for all octets
+	if a|b|c|d > 255 {
 		return 0, false
 	}
 
