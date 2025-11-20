@@ -1,5 +1,3 @@
 source_uri: "/home/naz/ip_addresses"  # path to IP file
-bitmapThresholdMB: 100
 counter:
-  buffer_size: 1   # MB
-  batch_size: 10000  # lines
+  buffer_size_MB: 128

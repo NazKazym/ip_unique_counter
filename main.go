@@ -16,9 +16,8 @@ func main() {
 		fmt.Println("Failed to load config:", err)
 		os.Exit(1)
 	}
-	fmt.Printf("Config properties:")
-	fmt.Printf("Buffer size: %d\nMB", cfg.Counter.BufferSize)
-	fmt.Printf("Batch size: %d\n lines", cfg.Counter.BatchSize)
+	fmt.Printf("Config properties: %s\n", configPath)
+	fmt.Printf("Buffer size: %dMB\n", cfg.Counter.BufferSizeMB)
 	start := time.Now()
 
 	count := countUniqueIPs(cfg)
@@ -33,9 +32,7 @@ func main() {
 }
 
 func countUniqueIPs(cfg Config) uint64 {
-	// Get file size
 	filePath := cfg.SourceURI
-	bitmapThresholdBytes := cfg.BitmapThresholdMB
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		log.Fatal(err)
@@ -44,12 +41,5 @@ func countUniqueIPs(cfg Config) uint64 {
 
 	fmt.Printf("File size: %.2f MB\n", float64(fileSize)/(1024*1024))
 
-	// Choose strategy based on file size
-	if fileSize < int64(bitmapThresholdBytes) {
-		fmt.Printf("Using MAP strategy (file < %d MB)\n", bitmapThresholdBytes)
-		return countWithMap(cfg)
-	} else {
-		fmt.Printf("Using BITMAP strategy (file >= %d MB)\n", bitmapThresholdBytes)
-		return countWithBitmap(cfg)
-	}
+	return countWithBitmap(cfg)
 }

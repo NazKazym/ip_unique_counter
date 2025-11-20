@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"math/bits"
 	"os"
 	"runtime"
 	"sync"
@@ -12,7 +15,7 @@ import (
 )
 
 func (b *Bitmap) count() uint64 {
-	numWorkers := runtime.NumCPU() * 2
+	numWorkers := runtime.NumCPU()
 	chunkSize := len(b.data) / numWorkers
 
 	var wg sync.WaitGroup
@@ -28,11 +31,11 @@ func (b *Bitmap) count() uint64 {
 				end = len(b.data)
 			}
 
-			var localCount uint64
+			var local uint64
 			for j := start; j < end; j++ {
-				localCount += uint64(popcount(b.data[j]))
+				local += uint64(bits.OnesCount64(b.data[j]))
 			}
-			results[workerID] = localCount
+			results[workerID] = local
 		}(i)
 	}
 
@@ -42,20 +45,18 @@ func (b *Bitmap) count() uint64 {
 	for _, c := range results {
 		total += c
 	}
-
 	return total
 }
 
-type job struct {
-	lines []string
-}
-
-// Strategy 2: Bitmap-based (for large files)
 func countWithBitmap(cfg Config) uint64 {
 	bitmap := newBitmap()
-	numWorkers := runtime.NumCPU()
 
-	fmt.Printf("Using %d workers with sharded bitmap (512 MB)\n", numWorkers)
+	numWorkers := runtime.NumCPU() * 2
+	if numWorkers > 128 {
+		numWorkers = 128
+	}
+
+	fmt.Printf("Using %d parallel workers with single 512 MiB bitmap\n", numWorkers)
 
 	file, err := os.Open(cfg.SourceURI)
 	if err != nil {
@@ -63,77 +64,95 @@ func countWithBitmap(cfg Config) uint64 {
 	}
 	defer file.Close()
 
-	jobs := make(chan job, numWorkers*2)
-	var wg sync.WaitGroup
+	errorFile, err := os.Create("errors.log")
+	if err != nil {
+		log.Fatalf("cannot create errors.log: %v", err)
+	}
+	defer errorFile.Close()
+	errorWriter := bufio.NewWriter(errorFile)
+	defer errorWriter.Flush()
+
 	var linesProcessed atomic.Uint64
 	var validIPs atomic.Uint64
 
-	// Calculate shard boundaries
-	maxIP := uint64(1) << 32
-	shardSize := maxIP / uint64(numWorkers)
+	start := time.Now()
+	done := startProgressReporter(&linesProcessed, &validIPs, start)
 
-	// Start workers - each handles specific IP range
+	ipChans := make([]chan uint32, numWorkers)
+	var wgWorkers sync.WaitGroup
+	wgWorkers.Add(numWorkers)
+
 	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func(workerID int) {
-			defer wg.Done()
-			shardStart := uint32(uint64(workerID) * shardSize)
-			shardEnd := uint32(uint64(workerID+1) * shardSize)
-			if workerID == numWorkers-1 {
-				shardEnd = 0xFFFFFFFF
-			}
+		ipChans[i] = make(chan uint32, 262_144)
 
-			for j := range jobs {
-				for _, line := range j.lines {
-					ip, ok := parseIPv4Fast(line)
-					if !ok {
-						continue
-					}
-
-					// Only process IPs in this worker's range
-					if ip >= shardStart && ip <= shardEnd {
-						bitmap.set(ip)
-						validIPs.Add(1)
-					}
-				}
-				linesProcessed.Add(uint64(len(j.lines)))
+		go func(ch <-chan uint32) {
+			defer wgWorkers.Done()
+			for ip := range ch {
+				bitmap.set(ip)
 			}
-		}(i)
+		}(ipChans[i])
 	}
 
-	done := startProgressReporter(&linesProcessed, &validIPs)
+	bufferSizeBytes := cfg.Counter.BufferSizeMB * 1024 * 1024
+	reader := bufio.NewReaderSize(file, bufferSizeBytes)
 
-	// Read file
-	scanner := bufio.NewScanner(file)
-	bufferSize := cfg.Counter.BufferSize
-	batchSize := cfg.Counter.BatchSize
-	scanner.Buffer(make([]byte, bufferSize), bufferSize*4)
+	const flushEvery = uint64(20_000_000)
+	var localLines, localValid uint64
+	var lineNumber uint64
+	var wrongLines uint64
 
-	batch := make([]string, 0, batchSize)
-	for scanner.Scan() {
-		batch = append(batch, scanner.Text())
+	for {
+		lineBytes, err := reader.ReadSlice('\n')
 
-		if len(batch) >= batchSize {
-			batchCopy := make([]string, len(batch))
-			copy(batchCopy, batch)
-			jobs <- job{lines: batchCopy}
-			batch = batch[:0]
+		if len(lineBytes) > 0 {
+			lineNumber++
+
+			ip, err := parseIPv4Line(lineBytes)
+			if err != nil {
+				wrongLines++
+				trimmed := trimRightSpaceCRLF(lineBytes)
+				fmt.Fprintf(errorWriter, "%d | %q | %v\n", lineNumber, trimmed, err)
+			} else {
+
+				bitIdx := uint64(ip)
+				wordIdx := bitIdx >> 6
+				shardIdx := int(wordIdx % uint64(numWorkers))
+
+				ipChans[shardIdx] <- ip
+				localValid++
+			}
+
+			localLines++
+			if localLines >= flushEvery {
+				linesProcessed.Add(localLines)
+				validIPs.Add(localValid)
+				localLines, localValid = 0, 0
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil && !errors.Is(err, bufio.ErrBufferFull) {
+			log.Fatal(err)
 		}
 	}
 
-	if len(batch) > 0 {
-		jobs <- job{lines: batch}
+	if localLines > 0 {
+		linesProcessed.Add(localLines)
+		validIPs.Add(localValid)
 	}
 
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+	for _, ch := range ipChans {
+		close(ch)
 	}
-
-	close(jobs)
-	wg.Wait()
+	wgWorkers.Wait()
 	close(done)
 
-	// Count unique IPs
+	if wrongLines > 0 {
+		fmt.Printf("\nWarning: %d invalid lines logged to errors.log\n", wrongLines)
+	}
+
 	fmt.Println("\nCounting unique IPs...")
 	countStart := time.Now()
 	count := bitmap.count()

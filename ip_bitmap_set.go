@@ -1,23 +1,16 @@
 package main
 
-const ( // Lines per batch
-	bitmapSize = 512 * 1024 * 1024 // 512MB for all IPv4
-)
-
-// Bitmap for all IPv4 addresses
 type Bitmap struct {
-	data []byte
+	data []uint64
 }
 
 func newBitmap() *Bitmap {
-	return &Bitmap{
-		data: make([]byte, bitmapSize),
-	}
+	return &Bitmap{data: make([]uint64, 1<<26)}
 }
 
-// Set bit for IP (no locks needed with sharding)
 func (b *Bitmap) set(ip uint32) {
-	byteIdx := ip / 8
-	bitIdx := ip % 8
-	b.data[byteIdx] |= 1 << bitIdx
+	bitIdx := uint64(ip)
+	wordIdx := bitIdx >> 6
+	mask := uint64(1) << (bitIdx & 63)
+	b.data[wordIdx] |= mask
 }

@@ -1,50 +1,70 @@
 package main
 
-// Parses IP directly from string to uint32
-func parseIPv4Fast(s string) (uint32, bool) {
-	var a, b, c, d int
-	var n int
-	parts := 0
+import (
+	"errors"
+	"fmt"
+)
 
-	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		if ch >= '0' && ch <= '9' {
-			n = n*10 + int(ch-'0')
-			if n > 255 {
-				return 0, false
-			}
-		} else if ch == '.' {
-			switch parts {
-			case 0:
-				a = n
-			case 1:
-				b = n
-			case 2:
-				c = n
-			default:
-				return 0, false
-			}
-			parts++
-			n = 0
-		} else if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
-			// Allow whitespace after IP
-			break
+var (
+	ErrTooShort      = errors.New("too short for IPv4")
+	ErrTooLong       = errors.New("too long for IPv4")
+	ErrOctetTooLarge = errors.New("octet > 255")
+	ErrTooManyDots   = errors.New("too many dots")
+	ErrNotEnoughDots = errors.New("not exactly 4 octets")
+)
+
+func trimRightSpaceCRLF(b []byte) []byte {
+	i := len(b)
+	for i > 0 {
+		c := b[i-1]
+		if c == '\n' || c == '\r' || c == ' ' || c == '\t' {
+			i--
 		} else {
-			// Invalid character
-			return 0, false
+			break
+		}
+	}
+	return b[:i]
+}
+
+func parseIPv4Line(b []byte) (uint32, error) {
+	b = trimRightSpaceCRLF(b)
+
+	ln := len(b)
+	if ln > 15 {
+		return 0, ErrTooLong
+	}
+
+	if ln < 7 {
+		return 0, ErrTooShort
+	}
+
+	var ip uint32
+	var octet uint32
+	dots := 0
+
+	for _, c := range b {
+		switch {
+		case c >= '0' && c <= '9':
+			octet = octet*10 + uint32(c-'0')
+			if octet > 255 {
+				return 0, ErrOctetTooLarge
+			}
+		case c == '.':
+			if dots >= 3 {
+				return 0, ErrTooManyDots
+			}
+			ip = (ip << 8) | octet
+			octet = 0
+			dots++
+		default:
+			return 0, fmt.Errorf("invalid char %q", c)
 		}
 	}
 
-	if parts != 3 {
-		return 0, false
-	}
-	d = n
-
-	// Single check for all octets
-	if a|b|c|d > 255 {
-		return 0, false
+	if dots != 3 {
+		return 0, ErrNotEnoughDots
 	}
 
-	ip := uint32(a)<<24 | uint32(b)<<16 | uint32(c)<<8 | uint32(d)
-	return ip, true
+	ip = (ip << 8) | octet
+	return ip, nil
 }
