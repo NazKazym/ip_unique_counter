@@ -60,23 +60,7 @@ line.
 ## Example Output
 
 Here is a real run on the test file:
-
-    Using 16 parallel workers with single 512 MiB bitmap
-    Progress :: 7,980,000,000 lines | 6.56 M/s | 7,980,000,000 IPs | elapsed 20m16s
-
-    Finished!
-       Total lines processed : 8,000,000,000
-       Valid IPv4 addresses  : 8,000,000,000
-       Total time            : 20m18.968s
-
-    Counting unique IPs...
-       Average speed         : 6.56 M lines/sec
-       Count time            : 23.53ms
-
-    Unique IPv4 addresses : 1000000000
-    Time elapsed          : 20m18.996s
-    Memory used           : 592.36 MB
-
+<img width="900" height="600" alt="Screenshot 2025-11-19 202621" src="https://github.com/user-attachments/assets/765f551c-b0a6-40ff-b01b-425cbbdb1602" />
 
 ------------------------------------------------------------------------
 ## Input
@@ -89,10 +73,10 @@ Each line should contain a single IPv4 address:
     10.0.0.5
     8.8.8.8
 
-Newline variations (`` or ``) are fine. Extra spaces are ignored.
+Newline variations (``\n``or ``\r\n``) are fine. Extra spaces are ignored.
 
 If the parser finds something wrong in a line, it writes it to
-`errors.log`, for example:
+`errors.log` with line number, line value and error message, for example:
 
     1521 | "999.999.0.1" | octet > 255
 
