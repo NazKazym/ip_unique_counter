@@ -100,10 +100,12 @@ one task, but does it efficiently.
 ## Project Structure
 
     .
-    ├── bitmap.go        # Bitmap data structure
-    ├── counter.go       # Main processing loop
-    ├── parser.go        # IPv4 parser
-    ├── progress.go      # Progress reporting
+    ├── ip_bitmap_set        # Bitmap data structure and setter
+    ├── bitmap_counter.go       # Main processing loop
+    ├── ip_parser.go            # IPv4 parser
+    ├── config.go              # Configuration loading
+    ├── config.yaml            # Configuration yaml file
+    ├── progress_reporter.go   # Progress reporting
     ├── main.go          # CLI entry point
     └── README.md
 
